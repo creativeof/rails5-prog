@@ -3,10 +3,12 @@ services:
   web:
     container_name: tweet_web
     build: .
+    image: prog-ruby:2.5
     command: bundle exec rails s -p 3000 -b '0.0.0.0'
     volumes:
-      - .:/mnt
+      - .:/tweet_app
     ports:
       - "3000:3000"
     environment:
       - TZ=Asia/Tokyo
+      - LANG=ja_JP.UTF-8

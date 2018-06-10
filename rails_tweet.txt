@@ -1,0 +1,611 @@
+■tweet_app
+--------------------------------------
+Docker
+
+mkdir rails_prog
+cd rails_prog
+
+vi Dockerfile
+FROM ruby:2.5
+RUN apt-get update -qq && apt-get install -y sqlite3 nodejs
+RUN mkdir /tweet_app
+WORKDIR /tweet_app
+COPY Gemfile /tweet_app/Gemfile
+COPY Gemfile.lock /tweet_app/Gemfile.lock
+RUN bundle install
+COPY . /tweet_app
+
+vi Gemfile
+source 'https://rubygems.org'
+gem 'rails', '5.2.0'
+
+touch Gemfile.lock
+
+vi docker-compose.yml
+version: '3'
+services:
+  web:
+    container_name: tweet_web
+    build: .
+    image: prog-web:2.5
+    command: bundle exec rails s -p 3000 -b '0.0.0.0'
+    volumes:
+      - .:/tweet_app
+    ports:
+      - "3000:3000"
+    environment:
+      - TZ=Asia/Tokyo
+
+docker-compose run web rails new . --force
+
+==============================
+ファイル権限設定
+sudo chown -R $USER:$USER .
+==============================
+
+GemfileやDockerfileを変更を加えた場合
+docker-compose build
+
+docker-compose up
+バックグラウンドで実行
+docker-compose up -d
+停止
+docker-compose stop
+
+
+「top」ページ作成（http://localhost:3000/home/top）
+rails generate controller home top
+コントローラー名とアクション名を指定
+コントローラーとビューが作成される（Home#top）
+Running via Spring preloader in process 57
+      create  app/controllers/home_controller.rb
+       route  get 'home/top'
+      invoke  erb
+      create    app/views/home
+      create    app/views/home/top.html.erb
+      invoke  test_unit
+      create    test/controllers/home_controller_test.rb
+      invoke  helper
+      create    app/helpers/home_helper.rb
+      invoke    test_unit
+      invoke  assets
+      invoke    coffee
+      create      app/assets/javascripts/home.coffee
+      invoke    scss
+      create      app/assets/stylesheets/home.scss
+
+
+ルーティング変更
+config/routes.rb
+get 'home/top'
+（http://localhost:3000/home/top）
+  ↓
+get 'top' => 'home#top'
+（http://localhost:3000/top）
+↓
+get '/' => 'home#top'
+（http://localhost:3000/）
+
+新しいページを追加
+get 'about' => 'home#about'
+
+
+assets/stylesheets/home.scss
+SCSSはCSSを拡張したものでcssを効率的に書く文法も使用できる。
+
+画像はpublicフォルダに配置しておくと、
+「<img src="/画像名">」や
+「background-image: url("画像名");」のように
+画像名を指定するだけで簡単に画像を表示することができる。
+
+
+リンク
+ルーティングのURLと同じにする
+<a href="/about">TweetAppとは</a>
+<%= link_to("TweetAppとは", "/about") %>
+
+
+■一覧ページ作成(http://localhost:3000/posts/index)
+複数形
+rails g controller posts index
+Running via Spring preloader in process 56
+      create  app/controllers/posts_controller.rb
+       route  get 'posts/index'
+      invoke  erb
+      create    app/views/posts
+      create    app/views/posts/index.html.erb
+      invoke  test_unit
+      create    test/controllers/posts_controller_test.rb
+      invoke  helper
+      create    app/helpers/posts_helper.rb
+      invoke    test_unit
+      invoke  assets
+      invoke    coffee
+      create      app/assets/javascripts/posts.coffee
+      invoke    scss
+      create      app/assets/stylesheets/posts.scss
+
+■postsテーブル作成
+マイグレーションファイルの作成
+単数形
+rails g model Post content:text
+Running via Spring preloader in process 98
+      invoke  active_record
+      create    db/migrate/20180606144709_create_posts.rb
+      create    app/models/post.rb
+      invoke    test_unit
+      create      test/models/post_test.rb
+      create      test/fixtures/posts.yml
+
+DBに反映
+rails db:migrate
+== 20180606144709 CreatePosts: migrating ======================================
+-- create_table(:posts)
+   -> 0.0088s
+== 20180606144709 CreatePosts: migrated (0.0098s) =============================
+マイグレーションファイルを作成したら必ず実行
+
+Railsでは、データベースに反映されていないマイグレーションファイルが
+存在する状態でどこかのページにアクセスすると
+「Migrations are pending.」のエラーが発生する。
+
+データ登録
+rails console
+post1 = Post.new(content: "今日からProgateでRailsの勉強するよー！")
+post1.save
+post2 = Post.new(content: "投稿一覧ページ作成中！")
+post2.save
+
+SyntaxError: (irb):1: invalid multibyte char (US-ASCII)
+のエラーが出る場合
+export LANG=ja_JP.UTF-8
+
+
+テーブルからデータを取り出す
+rails console
+post = Post.first
+post.content
+
+Post.all[0]
+Post.find_by(id:3)
+Post.all.order(created_at: :desc)
+
+find_byメソッドではその条件に合致するデータを「1件だけ」取得することができる
+複数取得する場合はwhereメソッドを使う
+
+
+■投稿詳細ページ作成(http://localhost:3000/posts/show)
+新たなページを作成するにはルーティング、アクション、ビューが必要
+
+「posts/:id」というルーティングは「posts/index」より下に書かなければいけません。
+get 'posts/index' => 'home#top'
+get "posts/:id" => "posts#show"
+ルーティングは合致するURLを上から順に探します。
+そのため「posts/index」よりも上に書くと、
+「localhost:3000/posts/index」というURLは
+「posts/:id」というルーティングに合致してしまいます。
+
+posts_controller.rbにshowアクションを追加
+show.html.erbを作成
+<%= "idが「#{@id}」の投稿詳細画面です" %>
+Rubyでは#{ }を用いて変数の値を文字列中に表示することができる。
+
+
+config/application.rb
+
+DBの保存時間を変更(UTC→JST)
+config.active_record.default_timezone = :local
+
+表示のみをUST→JSTにする★★
+config.time_zone = 'Tokyo'
+
+日本語化対応（メッセージなど）
+config.i18n.default_locale = :ja
+ja.ymlをダウンロードしてconfig/locale/に置く
+サーバーを再起動
+
+
+日時のデフォルトフォーマット設定
+time_formats.rbというファイルを作成して、サーバを再起動
+config/initializers/time_formats.rb
+Time::DATE_FORMATS[:default] = '%Y/%m/%d %H:%M'
+
+
+
+GET用リンク
+<%= link_to(post.content, "/posts/#{post.id}") %>
+
+
+■新規投稿ページ作成(http://localhost:3000/posts/new)
+ルーティング get "posts/new" => "posts#new"
+アクション追加 def new
+ビュー追加 new.html.erb
+
+投稿保存
+ルーティング post "posts/create" => "posts#create"
+フォームを受け取る時はpost
+
+form_tagメソッド
+<%= form_tag("/posts/create") do %>
+  <textarea name="content"></textarea>
+  <input type="submit" value="投稿">
+<% end %>
+
+paramsは以下の2通りの使い方がある。
+①「:○○」を使ったルーティングのURLから値を取得する
+②「name="○○"」が付いたフォームの入力内容を受け取る
+
+createアクションではビューを用意する代わりに
+他のURLに転送するリダイレクトを使う。
+redirect_to("/posts/index")
+redirect_to("転送先のURL")
+
+データを編集
+rails console
+post = Post.find_by(id:1)
+post.content = "Rails"
+post.save
+
+データを削除
+post = Post.find_by(id:1)
+post.destroy
+
+DB接続
+sqlite3 db/development.sqlite3
+.tables
+.headers on
+select * from posts;
+
+■投稿編集ページ作成(http://localhost:3000/posts/edit)
+ルーティング
+  get "posts/:id/edit" => "posts#edit"
+editアクション
+edit.html.erb
+
+ルーティング
+  post "posts/:id/update" => "posts#update"
+updateアクション
+form_tag
+<%= form_tag("/posts/#{@post.id}/update") do %>
+  <textarea name="content"><%= @post.content %></textarea>
+  <input type="submit" value="保存">
+<% end %>
+
+
+■削除機能
+ルーティング
+  post "posts/:id/destroy" => "posts#destroy"
+get: データベースを更新しないアクション
+post: データベースを更新するアクション/sessionを更新するアクション
+
+POST用リンク
+<%= link_to("削除", "/posts/#{@post.id}/destroy", {method: "post"}) %>
+
+
+■バリデーション
+  validates :content, {presence: true, length: {maximum: 140}}
+
+バリデーション失敗時はアクションを経由せず、ビューを表示
+render("posts/edit")
+render("フォルダ名/ファイル名")
+renderの場合、postsの前に/は不要
+renderメソッドを使うと、redirect_toメソッドを使った場合と違い、
+そのアクション内で定義した@変数をビューでそのまま使うことができます。
+
+バリデーションエラーメッセージを表示
+<% @post.errors.full_messages.each do |message| %>
+  <div class="form-error">
+    <%= message %>
+  </div>
+<% end %>
+
+サクセスメッセージ
+ページ上に1度だけ表示されるメッセージをフラッシュといいます。
+ページを更新したり、別のページに移動したりすると、フラッシュは表示されなくなります。
+アクションで変数flash[:notice]に文字列を代入すると、
+flash[:notice]をビューで使うことができます。
+flashはいろいろな箇所で共通で使っていくのでapplication.html.erbで表示
+
+アクション
+flash[:notice] = "投稿を編集しました"。
+
+ビュー(layouts/application.html.erb)
+<% if flash[:notice] %>
+  <div class="flash">
+    <%= flash[:notice] %>
+  </div>
+<% end %>
+
+-----------------------------------------------
+ユーザー機能
+モデルとテーブルの作成
+rails g model User name:string email:string
+Running via Spring preloader in process 50
+      invoke  active_record
+      create    db/migrate/20180610013952_create_users.rb
+      create    app/models/user.rb
+      invoke    test_unit
+      create      test/models/user_test.rb
+      create      test/fixtures/users.yml
+
+rails db:migrate
+== 20180610013952 CreateUsers: migrating ======================================
+-- create_table(:users)
+   -> 0.0076s
+== 20180610013952 CreateUsers: migrated (0.0078s) =============================
+
+rails c
+user = User.new(name: "にんじゃわんこ", email: "wanko@prog-8.com")
+user.save
+
+値の重複チェック
+validates :email, {uniqueness: true}
+
+
+■ユーザー一覧ページ作成
+rails g controller users index
+Running via Spring preloader in process 67
+      create  app/controllers/users_controller.rb
+       route  get 'users/index'
+      invoke  erb
+      create    app/views/users
+      create    app/views/users/index.html.erb
+      invoke  test_unit
+      create    test/controllers/users_controller_test.rb
+      invoke  helper
+      create    app/helpers/users_helper.rb
+      invoke    test_unit
+      invoke  assets
+      invoke    coffee
+      create      app/assets/javascripts/users.coffee
+      invoke    scss
+      create      app/assets/stylesheets/users.scss
+
+html修正
+app/views/users/index.html.erb
+css修正（ユーザー関連CSS）
+app/assets/stylesheets/users.scss
+
+■ユーザー詳細ページ
+get "users/:id" => "users#show"
+app/views/users/show.html.erb
+
+■ユーザー登録ページ
+ユーザー登録ページは「/signup」でアクセスできるようにする
+get "signup" => "users#new"
+app/views/users/new.html.erb
+1行のフォームは<input>タグを用いて作成できます。
+なお、<input>タグは終了タグ（</input>）が不要。
+<input>タグでは、value属性の値が初期値になります。
+value属性に値を指定するとフォームに初めから値が入力された状態で表示できます。
+
+■ユーザー編集ページ
+get "users/:id/edit" => "users#edit"
+
+
+プロフィール画像表示
+public/user_images/default_user.jpg
+
+テーブルにカラム追加
+マイグレーションファイルのみ作成
+rails g migration add_image_name_to_users
+Running via Spring preloader in process 118
+      invoke  active_record
+      create    db/migrate/20180610071624_add_image_name_to_users.rb
+
+マイグレーションファイルのみを作成するには、
+「rails g migration ファイル名」とします。
+
+カラム追加するマイグレーションファイル
+add_column :users, :image_name, :string
+add_column :テーブル名, :カラム名, :データ型
+
+rails db:migrate
+== 20180610071624 AddImageNameToUsers: migrating ==============================
+-- add_column(:users, :image_name, :string)
+   -> 0.0038s
+== 20180610071624 AddImageNameToUsers: migrated (0.0040s) =====================
+
+画像表示
+<img src="<%= "/user_images/#{@user.image_name}" %>">
+画像はpublic/user_imagesフォルダに保存されているので、
+src属性の値は「/user_images/ファイル名」とする
+
+画像送信
+<input>タグに「type="file"」を追加することで、
+画像ファイルを選択するボタンを表示することが出来ます。
+画像の送信のときはform_tagに{multipart: true}を追加する必要がある。
+
+画像アップロード後
+ファイル名をデータベースに保存し、
+publicフォルダに画像ファイルを作成
+
+
+Rubyのファイル作成
+File.write("public/sample.txt", "Hello World")
+=> 11
+File.write(ファイルの場所, ファイルの中身)
+
+画像データの場合はFile.writeではなくFile.binwriteを用いる必要がある
+image = params[:image]
+File.binwrite("public/user_images/#{@user.image_name}", image.read)
+画像を保存する処理は、画像データが送信された場合だけ実行するようにする
+
+
+
+ ■ログイン
+ログイン機能
+ログアウト機能
+ログインしているユーザー名の表示
+ログインしているかどうかでアクセス制限をする
+ログインしているユーザ情報のみ編集できる
+
+ログインページ作成
+ルーティング
+get "login" => "users#login_form"
+users_controller.rbにlogin_formアクションを追加
+login_form.html.erbを作成
+
+inputタグのtype属性をpasswordとすると伏字になる
+<input type="password">
+
+パスワードカラムを追加
+rails g migration add_password_to_users
+Running via Spring preloader in process 203
+      invoke  active_record
+      create    db/migrate/20180610092518_add_password_to_users.rb
+
+def change
+  add_column :users, :password, :string
+end
+
+rails db:migrate
+== 20180610092518 AddPasswordToUsers: migrating ===============================
+-- add_column(:users, :password, :string)
+   -> 0.0075s
+== 20180610092518 AddPasswordToUsers: migrated (0.0077s) ======================
+
+バリデーション
+validates :password, {presence: true}
+
+現在データベースに登録されているユーザーにパスワードを設定
+user = User.find_by(id: 1)
+user.password = "ninjawanko"
+user.save
+
+ログインフォーム送信
+ルーティング
+post "login" => "users#login"
+link_toメソッドではデフォルトでgetのルーティングを探し、
+form_tagメソッドがデフォルトでpostのルーティングを探します。
+
+loginアクション追加
+form_tag作成
+
+
+ログインユーザの特定（DBに存在チェック）
+存在しない場合エラー
+存在する場合投稿一覧ページへ
+
+session変数
+sessionに代入された値は、ブラウザに保存される。
+sessionに値を代入すると、ブラウザはそれ以降のアクセスで
+sessionの値をRailsに送信する。
+
+ログイン時にセッション情報を保持
+session[:user_id] = @user.id
+
+
+■ログアウト処理
+ルーティング
+post "logout" => "users#logout"
+ログアウトでsession情報を空にする。
+session[:user_id] = nil
+
+ユーザー登録に成功したらログイン状態にする。
+sessionを登録
+
+
+■ログインしているユーザー名の表示
+before_action
+全アクションで共通する処理を1箇所にまとめることができます。
+application_controller.rb
+全てのコントローラで共通する処理は
+applicaitonコントローラにまとめることができます。
+
+before_action :set_current_user
+
+def set_current_user
+  @current_user = User.find_by(id: session[:user_id])
+end
+
+
+■ログインしていない場合のアクセス制御
+@current_userがいない場合にはログインページにリダイレクトするようにする。
+applicaitonコントローラにauthenticate_userというメソッドを作成し、
+アクセス制限の処理を共通化
+
+全アクションに適用したい訳ではないので、
+各コントローラの各アクションでbefore_actionを適用
+
+users_controller
+  before_action :authenticate_user, {only: [:index, :show, :edit, :update]}
+posts_controller
+  before_action :authenticate_user
+
+
+■ログインしている場合のアクセス制御
+applicaitonコントローラにforbid_login_userというメソッドを作成し、
+アクセス制限の処理を共通化
+@current_userがいる場合は投稿一覧ページににリダイレクトするようにする。
+
+home_controller
+before_action :forbid_login_user, {only: [:top]}
+users_controller
+before_action :forbid_login_user, {only: [:new, :create, :login_form, :login]}
+
+
+■他のユーザーの編集を制限
+ビュー
+<% if @user.id == @current_user.id %>
+<% end %>
+
+アクション
+usersコントローラのeditアクション
+およびupdateアクションに制限をかける。
+「正しいユーザーかを確かめる」という意味のensure_correct_userメソッドを用意し、
+ログイン中のユーザーのidと編集したいユーザーのidが等しいか判定。
+等しくなかった場合はフラッシュを表示し、投稿一覧ページにリダイレクトさせる。
+
+params[:id]で取得できる値は文字列なので
+to_iメソッドを用いて数値に変換して@current_user.idと比較
+
+
+■「投稿」と「ユーザー」の紐付け
+postsテーブルにuser_idカラムを追加
+rails g migration add_user_id_to_posts
+Running via Spring preloader in process 291
+      invoke  active_record
+      create    db/migrate/20180610133558_add_user_id_to_posts.rb
+
+def change
+  add_column :posts, :user_id, :integer
+end
+
+rails db:migrate
+== 20180610133558 AddUserIdToPosts: migrating =================================
+-- add_column(:posts, :user_id, :integer)
+   -> 0.0038s
+== 20180610133558 AddUserIdToPosts: migrated (0.0040s) ========================
+
+post.rb
+validates :user_id, {presence: true}
+
+postコントローラーのcreateアクションでuser_idを登録
+
+
+■モデルにインスタンスメソッドを定義
+Postモデルにユーザー情報を取得するuserメソッドを定義
+def user
+  return User.find_by(id: self.user_id)
+end
+インスタンスメソッド内でselfはそのインスタンス自身を指す
+
+
+ユーザーに紐付く複数の投稿を取得
+user.rb
+def posts
+  return Post.where(user_id: self.id)
+end
+whereメソッドでデータを取得した場合、データは配列に入っている。
+
+
+投稿者だけが編集できるようにする。
+<% if @post.user_id == @current_user.id %>
+<% end %>
+
+URLを直接たたいても編集、削除できないようにする。
+投稿に紐づくユーザーと現在ログインしているユーザーが
+異なるかどうかを比べるために、
+postsコントローラ内に「ensure_correct_user」というメソッドを用意
+before_actionを用いることで、このメソッドをedit、update、destroyで適用
